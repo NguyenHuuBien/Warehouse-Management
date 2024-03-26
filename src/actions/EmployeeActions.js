@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt'
+import crypto from "crypto"
 import jwt from 'jsonwebtoken'
 import Employee from "../models/Employee.js";
 import { createValidation, loginValidation, signupValidation, updateValidations } from "../validations/EmployeeValidations.js"
@@ -8,18 +9,28 @@ import { isObjectId } from '../validations/index.js';
 import { convertCode, convertNameSearch } from '../utils/convert.js';
 import { getPaginData, getPagination } from '../utils/paging.js';
 import Supplier from '../models/Supplier.js';
-import { query } from 'express';
+import Company from '../models/Company.js';
+import mongoose from 'mongoose';
+import Warehouse from '../models/Warehouse.js';
+import { searchNameCode } from '../utils/search.js';
+import { mailPassword, verifyEmail } from '../utils/mail.js';
 
 export const create = async ({ body, user, file }) => {
     let validate = await createValidation.validateAsync(body)
+    validate.company = new mongoose.Types.ObjectId(validate.company)
 
-    const oldIdentify = await Employee.findOne({ identify_number: validate.identify_number })
+    const oldCompany = await Company.findById(validate.company)
+    if (!oldCompany) throw new NotFoundError("Tên công ty không tồn tại!")
+
+    const oldWarehouse = await Warehouse.findById(validate.warehouse)
+    if (!oldWarehouse) throw new NotFoundError("Tên kho không tồn tại!")
+
+    const oldIdentify = await Employee.findOne({ identify_number: validate.identify_number, company: validate.company })
     if (oldIdentify) throw new ParamError("Số Căn cước này trùng với nhân viên ở trong công ty")
 
-    const oldUsername = await Employee.findOne({ username: validate.username })
+    const oldUsername = await Employee.findOne({ username: validate.username, company: validate.company })
     if (oldUsername) throw new ParamError("Tên tại khoản này đã tồn tại")
 
-    validate.password = bcrypt.hashSync(validate.password, 12) //compareSync để so sánh
 
     const oldNumberEmployee = await Employee.countDocuments()
     validate.code = convertCode('NV', oldNumberEmployee)
@@ -28,8 +39,12 @@ export const create = async ({ body, user, file }) => {
         const img = await uploadImage(file, "huyenxinhgai")
         validate.img = img
     }
-    const result = await new Employee(validate).save()
-    return result
+    if (!validate.email) throw new ParamError("Thiếu Email!")
+    if (verifyEmail(validate.email, validate.username, validate.password)) {
+        validate.password = bcrypt.hashSync(validate.password, 12) //compareSync để so sánh
+        const result = await new Employee(validate).save()
+        return result
+    }
 }
 export const update = async ({ body, user, params, file }) => {
     const { id } = params
@@ -61,22 +76,27 @@ export const get = async ({params}) => {
     if (!isObjectId(id)) throw new ParamError("Sai id!")
     const oldUser = await Employee.findById(id).lean()
         .select("-createdAt -updatedAt -username -password -name_search -status")
+        .populate("warehouse", "name")
+        .populate("company", "name")
         .lean()
     return oldUser
 }
-export const list = async ({ query: { q = '', status, limit = 10, page = 1, warehouse }, user: currentUser }) => {
+export const list = async ({ query: { name = "", code = "", roles = "", status, limit = 10, page = 1, warehouse }, user: currentUser }) => {
     //tìm kiếm theo tên và mã
     let conditions = {}
+    const q = { name, code, roles }
     if (q) conditions = searchNameCode(q)
+
     if (status) conditions.status = status
     if (currentUser.warehouse) conditions.warehouse = currentUser.warehouse
     if (warehouse) conditions.warehouse = warehouse
-
     conditions.company = currentUser.company
 
     const { offset } = getPagination(page, limit)
     const result = await Employee.find(conditions)
         .select("-createdAt -updatedAt -username -password -name_search -status")
+        .populate("warehouse", "name")
+        .populate("company", "name")
         .limit(limit)
         .skip(offset)
         .sort({ createdAt: -1 })
@@ -175,6 +195,19 @@ export const login = async ({ body, user }) => {
 //         throw new Error("Token bị lỗi!");
 //     }
 // }
+
+export const forgotPassword = async ({ body }) => {
+    let oldUsername = await Employee.findOne({ username: body.username })
+    if (!oldUsername) {
+        oldUsername = await Supplier.findOne({ username: body.username })
+    }
+    if (!oldUsername) throw new ParamError("Tài khoản này không tồn tại!")
+    let newPassword = crypto.randomBytes(4).toString('hex');
+    await mailPassword(oldUsername.email, oldUsername.username, newPassword)
+    newPassword = bcrypt.hashSync(newPassword, 12)
+    await oldUsername.updateOne({ password: newPassword })
+    return true
+}
 
 const _generateToken = async ({ _id, name, roles, company, warehouse }, key, exp) => {
     const oldEmployee = { _id, name, roles, company, warehouse }

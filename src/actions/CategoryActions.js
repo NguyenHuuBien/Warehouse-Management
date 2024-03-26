@@ -1,5 +1,6 @@
 import { NotFoundError, ParamError } from "../config/errors.js"
 import Category from "../models/Category.js"
+import Company from "../models/Company.js"
 import { convertNameSearch } from "../utils/convert.js"
 import { getPaginData, getPagination } from "../utils/paging.js"
 import { searchNameCode } from "../utils/search.js"
@@ -13,6 +14,8 @@ export const create = async ({ body, user, file }) => {
     if (oldName) throw new ParamError("Tên Loại sản phẩm này đã tồn tại")
     validate.company = user.company
 
+    const oldCompany = await Company.findById(validate.company)
+    if (!oldCompany) throw new ParamError("Công ty không tồn tại!")
     validate.name_search = convertNameSearch(validate.name)
     const result = await new Category(validate).save()
     return result
@@ -36,19 +39,23 @@ export const update = async ({ body, user, params, file }) => {
 
 }
 
-export const list = async ({ query: { q = '', status, limit = 10, page = 1 }, user: currentUser }) => {
+export const list = async ({ query: { name = "", code = "", status, limit = 10, page = 1 }, user: currentUser }) => {
     //tìm kiếm theo tên và mã
     let conditions = {}
+    const q = { name, code }
     if (q) conditions = searchNameCode(q)
     conditions.status = 1
     if (status) conditions.status = status
+    conditions.company = currentUser.company
 
-    const { offset } = getPagination(page, limit)
+    // const { offset } = getPagination(page, limit)
     const result = await Category.find(conditions)
+        .populate("company", "name")
         .select("-createdAt -updatedAt -name_search -status")
-        .skip(offset)
+        // .skip(offset)
         .sort({ createdAt: -1 })
         .lean()
-    const total = await Category.countDocuments(conditions)
-    return getPaginData(result, total, page)
+    // const total = await Category.countDocuments(conditions)
+    return result
+    // return getPaginData(result, total, page)
 }

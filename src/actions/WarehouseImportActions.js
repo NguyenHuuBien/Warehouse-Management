@@ -1,111 +1,73 @@
-import { IMPORT_STATUS, PAYMENT_STATUS } from "../config/constant.js"
-import { NotFoundError, ParamError } from "../config/errors.js"
-import Product from "../models/Product.js"
+import mongoose from "mongoose"
+import WareHouseExport from "../models/WarehouseExport.js"
 import WarehouseImport from "../models/WarehouseImport.js"
+import { createValidation, updateValidation } from "../validations/WarehouseImportValidations.js"
+import { NotFoundError, ParamError } from "../config/errors.js"
 import { convertCode } from "../utils/convert.js"
 import { getPaginData, getPagination } from "../utils/paging.js"
-import { searchNameCode } from "../utils/search.js"
-import { createWarehouseImport, productValidate, updateWarehouseImport } from "../validations/WarehouseImportValidations.js"
 import { isObjectId } from "../validations/index.js"
+import { searchNameCode } from "../utils/search.js"
+import { _validateProducts } from "./OrderActions.js"
 
-const _validateProducts = async (products) => {
-    let totalPrice = 0
-    let listProduct
-    listProduct = JSON.parse(products) //string -> json -> array
-    for (let product of listProduct) {
-        if (!product.product) throw new ParamError("Thiếu id sản phẩm!")
-        const oldProduct = await Product.findById(product.product)
-        if (!oldProduct) throw new ParamError("Sản phẩm này không tồn tại")
-        product = await productValidate.validateAsync(product)
-        totalPrice = totalPrice + product.price_import * product.number
-    }
-    return { totalPrice, products: listProduct }
-}
-
-const _convertstatus = (totalPrice, paid) => {
-    let payment_status
-    let import_status
-    let debt = totalPrice - paid
-    if (debt <= 0) {
-        debt = 0
-        payment_status = PAYMENT_STATUS.PAID
-        import_status = IMPORT_STATUS.DONE
-    } else if (debt == paid) {
-        payment_status = PAYMENT_STATUS.NOT_PAY
-    } else {
-        payment_status = PAYMENT_STATUS.PAY_PART
-    }
-
-    return { debt, payment_status, import_status }
+//đơn trả hàng
+export const _createImport = async (export_id, warehouse, product) => {
+    const totalImports = await WarehouseImport.countDocuments()
+    let code = convertCode("TH", totalImports)
+    const result = await WarehouseImport.create({ code: code, old_export: new mongoose.Types.ObjectId(export_id), warehouse: warehouse, products: product })
+    return result
 }
 
 export const create = async ({ body, user, file }) => {
-    const validate = await createWarehouseImport.validateAsync(body)
+    const validate = await createValidation.validateAsync(body)
+    // const oldExport = await WareHouseExport.findById(validate.old_export)
+    // if (!oldExport) throw new ParamError("Không tìm thấy đơn xuất hàng!")
+    validate.warehouse = validate.warehouse ? validate.warehouse : user.warehouse
+    if (!validate.warehouse) throw new ParamError("Thiếu Kho!")
 
-    if (!body.products) throw new ParamError("Không có sản phẩm nào!")
-    const newProduct = await _validateProducts(body.products)
+    const newProduct = await _validateProducts(validate.products, validate.warehouse)
     validate.products = newProduct.products
-
-    const oldImport = await WarehouseImport.countDocuments()
-    validate.code = convertCode("NH", oldImport)
-
-    validate.total_price = newProduct.totalPrice
-    if (validate.discount) {
-        validate.total_price = newProduct.totalPrice * (1 - validate.discount / 100)
-    }
-
-    const { debt, payment_status, import_status } = _convertstatus(validate.total_price, validate.paid);
-    validate.debt = debt;
-    validate.payment_status = payment_status;
-    validate.import_status = import_status;
-
-    if (!validate.create_by) validate.create_by = user._id
-    if (!validate.supplier) throw new ParamError("Thiếu nhà cung cấp!")
-    if (!validate.warehouse) throw new ParamError("Thiếu tên kho!")
-    if (!validate.company) validate.company = user.company
     const result = await WarehouseImport.create(validate)
     return result
 }
 
-export const update = async ({ body, user, params }) => {
+export const update = async ({ params, user, body }) => {
     const { id } = params
     if (!id) throw new NotFoundError("Thiếu id!")
     if (!isObjectId(id)) throw new ParamError("Sai id!")
-    const validate = await updateWarehouseImport.validateAsync(body)
+    const validate = await updateValidation.validateAsync(body)
 
-    const oldWarehouseImport = await WarehouseImport.findById(id)
-    if (!oldWarehouseImport) throw new NotFoundError("Không tìm thấy đơn nhập hàng!")
-    if (validate.add_pay < 0 || validate.add_pay > oldWarehouseImport.total_price) throw new ParamError("Số tiền trả thêm không hợp lệ!")
+    const oldImport = await WarehouseImport.findById(id)
+    if (!oldImport) throw new NotFoundError("Đơn hàng không tồn tại!")
 
-    const { debt, payment_status, import_status } = _convertstatus(oldWarehouseImport.total_price, (oldWarehouseImport.paid + validate.add_pay))
-    validate.debt = debt;
-    validate.payment_status = payment_status;
-    validate.import_status = import_status;
-
-    const result = await WarehouseImport.findByIdAndUpdate(id, validate)
-    return result
+    await WarehouseImport.findByIdAndUpdate(id, validate)
+    return true
 }
 
-export const get = async ({ params }) => {
+export const get = async ({ params, user }) => {
     const { id } = params
     if (!id) throw new NotFoundError("Thiếu id!")
     if (!isObjectId(id)) throw new ParamError("Sai id!")
-    const oldWarehouseImport = await WarehouseImport.findById(id)
-        .select("-createdAt -updatedAt -warehouse -company")
-    return oldWarehouseImport
+
+    const oldImport = await WarehouseImport.findById(id)
+        .select("old_export import_status")
+        .populate("old_export", "-company -warehouse -createdAt -updatedAt -create_by")
+        .lean()
+    return oldImport
 }
 
-export const list = async ({ query: { q, status, limit = 10, page = 1, warehouse }, user: currentUser }) => {
+export const list = async ({ query: { code = "", status, page = 1, limit = 10, warehouse }, user: currentUser }) => {
     let conditions = {}
-
+    const q = { code }
     if (q) conditions = searchNameCode(q)
-    if (status) conditions.import_status = status
-    conditions.warehouse = warehouse ? warehouse : currentUser.warehouse
-    if (!conditions.warehouse) throw new ParamError("Thiếu tên Kho!")
+
+    if (status) conditions.status = status
+    if (!warehouse) throw new ParamError("Thiếu tên Kho!")
+    conditions.warehouse = warehouse
 
     const { offset } = getPagination(page, limit)
     const result = await WarehouseImport.find(conditions)
-        .select("-createdAt -updatedAt -warehouse -company")
+        .select("-createdAt -updatedAt -warehouse")
+        .populate("old_export", "-company -warehouse -createdAt -updatedAt -create_by")
         .sort({ createdAt: -1 })
         .skip(offset)
     const total = await WarehouseImport.countDocuments(conditions)

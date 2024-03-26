@@ -46,13 +46,16 @@ export const get = async ({ params }) => {
     if (!isObjectId(id)) throw new ParamError("Sai id!")
     const oldWarehouse = await Warehouse.findById(id)
         .select("-createdAt -updatedAt -name_search")
+        .populate("company", "name")
     return oldWarehouse
 }
 
-export const list = async ({ query: { q, status, limit = 10, page = 1, company }, user: currentUser }) => {
+export const list = async ({ query: { code = "", name = "", status, limit = 10, page = 1, company }, user: currentUser }) => {
+    //tìm kiếm theo tên và mã
     let conditions = {}
-
+    const q = { code, name }
     if (q) conditions = searchNameCode(q)
+
     if (status) conditions.status = status
     conditions.company = company ? company : currentUser.company
     if (!conditions.company) throw new ParamError("Thiếu tên công ty!")
@@ -60,9 +63,22 @@ export const list = async ({ query: { q, status, limit = 10, page = 1, company }
     const { offset } = getPagination(page, limit)
     const result = await Warehouse.find(conditions)
         .select("-createdAt -updatedAt -name_search")
+        .populate("company", "name")
         .sort({ createdAt: -1 })
         .skip(offset)
     const total = await Warehouse.countDocuments(conditions)
     return getPaginData(result, total, page)
 }
 
+export const listNoPage = async ({ query: { company }, user: currentUser }) => {
+    let conditions = {}
+    conditions.company = company ? company : currentUser.company
+    if (!conditions.company) throw new ParamError("Thiếu tên công ty!")
+
+    const result = await Warehouse.find(conditions)
+        .select("-createdAt -updatedAt -name_search")
+        .populate("company", "name")
+        .sort({ createdAt: -1 })
+        .lean()
+    return result
+}

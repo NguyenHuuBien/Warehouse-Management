@@ -15,12 +15,14 @@ export const createValidation = Joi.object({
     password: Joi.string().max(8),
     name: Joi.string(),
     status: Joi.number().valid(0, 1),
+    email: Joi.string(),
     phone: _phoneValidation,
     identify_number: Joi.string().length(12),
     sex: Joi.string().valid('male', 'female'),
     roles: Joi.string(),
     address: Joi.string(),
-    company: Joi.string()
+    company: Joi.string(),
+    warehouse: Joi.string()
 })
 
 export const loginValidation = Joi.object({
