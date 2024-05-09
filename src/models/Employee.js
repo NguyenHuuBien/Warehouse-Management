@@ -13,7 +13,7 @@ const employeeSchema = new mongoose.Schema({
     identify_number: { type: String },
     birthday: { type: String, },
     sex: { type: String, enum: SEX },
-    roles: { type: String, enum: ROLES, default: 'employee' },
+    roles: { type: String, enum: ROLES },
     address: { type: String, default: '' },
     position: { type: String },
     img: { type: String },

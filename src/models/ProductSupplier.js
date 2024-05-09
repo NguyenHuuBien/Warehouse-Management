@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { UNIT } from "../config/constant.js";
 
-const productSchema = mongoose.Schema({
+const productSupplierSchema = mongoose.Schema({
     name: { type: String },
     name_search: { type: String },
     // code: { type: String },
@@ -9,9 +9,9 @@ const productSchema = mongoose.Schema({
     description: { type: String },
     unit: { type: mongoose.Schema.Types.ObjectId, ref: 'Unit' }, //đơn vị tính
     price_import: { type: Number },
-    price: { type: Number },
-    number: { type: Number },
-    position: { type: String },
+    // price: { type: Number },
+    // number: { type: Number },
+    // position: { type: String },
     size: {
         length: { type: Number },
         width: { type: Number },
@@ -24,9 +24,8 @@ const productSchema = mongoose.Schema({
     category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
     // created_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
     supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
-    product: { type: mongoose.Schema.Types.ObjectId, ref: 'ProductSupplier' },
-    warehouse: { type: mongoose.Schema.Types.ObjectId, ref: 'Warehouse' },
+    // warehouse: { type: mongoose.Schema.Types.ObjectId, ref: 'Warehouse' },
 }, { timestamps: true, versionKey: false })
 
-const Product = mongoose.model("Product", productSchema)
-export default Product
+const ProductSupplier = mongoose.model("ProductSupplier", productSupplierSchema)
+export default ProductSupplier

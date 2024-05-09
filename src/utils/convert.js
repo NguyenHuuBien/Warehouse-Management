@@ -16,6 +16,10 @@ export const convertCode = (str, number) => {
             return str + zeros + numberString;
         case 'TH':
             return str + zeros + numberString;
+        case 'HD':
+            return str + zeros + numberString;
+        case 'CT':
+            return str + zeros + numberString;
         default:
             break;
     }
@@ -28,11 +32,61 @@ export const convertNameSearch = (name) => {
     return underscored;
 }
 
-export const lastMonth = () => {
+export const lastMonth = (previousMonth = true) => {
     const currentDate = new Date(); // Lấy ngày hiện tại
     const year = currentDate.getFullYear(); // Lấy năm hiện tại
-    const month = currentDate.getMonth() + 1; // Lấy tháng hiện tại (lưu ý: tháng trong JavaScript bắt đầu từ 0)
-    const startDate = new Date(year, month - 2, 2); // Ngày đầu tiên của tháng
-    const endDate = new Date(year, month - 1, 2); // Ngày cuối cùng của tháng
-    return { startDate, endDate }
+    let month = currentDate.getMonth(); // Lấy tháng hiện tại (lưu ý: tháng trong JavaScript bắt đầu từ 0)
+
+    if (previousMonth) {
+        // Nếu muốn lấy tháng trước, giảm đi một tháng
+        month -= 1;
+        if (month < 0) {
+            // Nếu tháng là tháng 1, chuyển năm về năm trước và đặt tháng là tháng 12
+            year -= 1;
+            month = 11;
+        }
+    }
+    const startDate = new Date(Date.UTC(year, month, 1)); // Ngày đầu tiên của tháng với múi giờ UTC
+    startDate.setUTCHours(0, 0, 0, 0); // Đặt thời gian thành 0 giờ UTC
+
+    const endDate = new Date(Date.UTC(year, month + 1, 1)); // Ngày cuối cùng của tháng với múi giờ UTC
+    endDate.setUTCHours(0, 0, 0, 0); // Đặt thời gian thành 0 giờ UTC
+
+    return { startDate, endDate };
+}
+
+export const getDate = (year, month, lastMonth = true) => {
+
+
+    if (lastMonth) {
+        // Nếu muốn lấy tháng trước, giảm đi một tháng
+        month -= 1;
+        if (month < 0) {
+            // Nếu tháng là tháng 1, chuyển năm về năm trước và đặt tháng là tháng 12
+            year -= 1;
+            month = 11;
+        }
+    }
+    const startDate = new Date(Date.UTC(year, month, 1)); // Ngày đầu tiên của tháng với múi giờ UTC
+    startDate.setUTCHours(0, 0, 0, 0); // Đặt thời gian thành 0 giờ UTC
+
+    const endDate = new Date(Date.UTC(year, month + 1, 1)); // Ngày cuối cùng của tháng với múi giờ UTC
+    endDate.setUTCHours(0, 0, 0, 0); // Đặt thời gian thành 0 giờ UTC
+
+    return { startDate, endDate };
+}
+
+export const convertToStartTime = (startTime) => {
+    // Convert start time to the beginning of the day
+    const startDate = new Date(startTime);
+    startDate.setHours(0, 0, 0, 0);
+    return startDate;
+}
+
+export const convertToEndTime = (stopTime) => {
+    // Convert stop time to the end of the day
+    const stopDate = new Date(stopTime);
+    stopDate.setHours(23, 59, 59, 999);
+
+    return stopDate;
 }

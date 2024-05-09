@@ -8,6 +8,7 @@ export const PAYMENT_STATUS = {
     NOT_PAY: 0, // chua thanh toan
     PAID: 1, // thanh toan het
     PAY_PART: 2, // thanh toan 1 phan
+    CANCEL: 3
 }
 
 export const PAYMENT_METHOD = {
@@ -16,6 +17,7 @@ export const PAYMENT_METHOD = {
 }
 
 export const ORDER_STATUS = {
+    DRAFT: 0,
     PENDING: 1, // đang chờ xử lý
     CONFIRM: 2, // xác nhận
     DELIVERY: 3, // đang giao hàng
@@ -27,8 +29,6 @@ export const EXPORT_STATUS = {
     CANCEL: 0,  //hủy
     OPEN: 1, //tạo phiếu
     DELIVERY: 2, // đang giao hàng
-    RECEIVED: 3, // Đã nhận
-    RETURN: 4 //trả lại
 }
 
 export const IMPORT_STATUS = {

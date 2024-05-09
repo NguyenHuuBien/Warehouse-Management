@@ -4,6 +4,7 @@ import { _phoneValidation } from "./EmployeeValidations.js";
 export const createSupplier = Joi.object({
     name: Joi.string(),
     phone: _phoneValidation,
+    // phone: Joi.string(),
     status: Joi.number().valid(0, 1),
     email: Joi.string(),
     address: Joi.string(),
@@ -16,6 +17,7 @@ export const createSupplier = Joi.object({
 export const updateSupplier = Joi.object({
     name: Joi.string(),
     phone: _phoneValidation,
+    // phone: Joi.string(),
     status: Joi.number().valid(0, 1),
     email: Joi.string(),
     address: Joi.string(),

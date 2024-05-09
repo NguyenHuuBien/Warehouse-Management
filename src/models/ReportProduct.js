@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 
 const reportProductSchema = mongoose.Schema({
+    month: { type: Number },
+    year: { type: Number },
     product: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
     warehouse: { type: mongoose.Schema.Types.ObjectId, ref: "Warehouse" },
     begin_inventory_quantity: { type: Number, default: 0 },

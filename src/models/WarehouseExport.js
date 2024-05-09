@@ -11,6 +11,8 @@ const wareHouseExportSchema = mongoose.Schema({
     }],
     discount: { type: Number, default: 0 },
     total_price: { type: Number, default: 0 },
+    reason_cancel: { type: String, default: "" },
+    is_return: { type: Number, default: 0 },
     payment_method: { type: Number, enum: PAYMENT_METHOD, default: 1 },
     export_status: { type: Number, enum: EXPORT_STATUS, default: 1 },
     create_by: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },

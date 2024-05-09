@@ -13,7 +13,7 @@ import Company from '../models/Company.js';
 import mongoose from 'mongoose';
 import Warehouse from '../models/Warehouse.js';
 import { searchNameCode } from '../utils/search.js';
-import { mailPassword, verifyEmail } from '../utils/mail.js';
+import { mailPassword, verifyEmail, verifyEmailUpdate } from '../utils/mail.js';
 
 export const create = async ({ body, user, file }) => {
     let validate = await createValidation.validateAsync(body)
@@ -29,18 +29,18 @@ export const create = async ({ body, user, file }) => {
     if (oldIdentify) throw new ParamError("Số Căn cước này trùng với nhân viên ở trong công ty")
 
     const oldUsername = await Employee.findOne({ username: validate.username, company: validate.company })
-    if (oldUsername) throw new ParamError("Tên tại khoản này đã tồn tại")
+    if (oldUsername) throw new ParamError("Tên tại khoản này  đãtồn tại")
 
 
     const oldNumberEmployee = await Employee.countDocuments()
     validate.code = convertCode('NV', oldNumberEmployee)
     validate.name_search = convertNameSearch(validate.name)
     if (file) {
-        const img = await uploadImage(file, "huyenxinhgai")
-        validate.img = img
+            const img = await uploadImage(file, "huyenxinhgai")
+            validate.img = img
     }
     if (!validate.email) throw new ParamError("Thiếu Email!")
-    if (verifyEmail(validate.email, validate.username, validate.password)) {
+    if (await verifyEmail(validate.email, validate.username, validate.password)) {
         validate.password = bcrypt.hashSync(validate.password, 12) //compareSync để so sánh
         const result = await new Employee(validate).save()
         return result
@@ -59,13 +59,19 @@ export const update = async ({ body, user, params, file }) => {
         const oldUsername = await Employee.findOne({ username: validate.username })
         if (oldUsername) throw new Error("Tên tài khoàn này đã tồn tại!")
     }
-
+    if (validate.name) validate.name_search = convertNameSearch(validate.name)
     if (validate.password) validate.password = bcrypt.hashSync(validate.password, 12)
+    let verificationCode
+    if (validate.email) {
+        verificationCode = Math.random().toString(36).slice(2);
+        await verifyEmailUpdate(validate.email, verificationCode)
+    } 
     if (file) {
         const img = await uploadImage(file)
         validate.img = img
     }
     const result = await Employee.findByIdAndUpdate(id, validate)
+    if (validate.email) return verificationCode
     return true
 
 }
@@ -75,7 +81,7 @@ export const get = async ({params}) => {
     if (!id) throw new NotFoundError("Thiếu id!")
     if (!isObjectId(id)) throw new ParamError("Sai id!")
     const oldUser = await Employee.findById(id).lean()
-        .select("-createdAt -updatedAt -username -password -name_search -status")
+        .select("-createdAt -updatedAt -password -name_search")
         .populate("warehouse", "name")
         .populate("company", "name")
         .lean()
@@ -88,13 +94,13 @@ export const list = async ({ query: { name = "", code = "", roles = "", status, 
     if (q) conditions = searchNameCode(q)
 
     if (status) conditions.status = status
-    if (currentUser.warehouse) conditions.warehouse = currentUser.warehouse
+    // if (currentUser.warehouse) conditions.warehouse = currentUser.warehouse
     if (warehouse) conditions.warehouse = warehouse
     conditions.company = currentUser.company
 
     const { offset } = getPagination(page, limit)
     const result = await Employee.find(conditions)
-        .select("-createdAt -updatedAt -username -password -name_search -status")
+        .select("-createdAt -updatedAt -name_search ")
         .populate("warehouse", "name")
         .populate("company", "name")
         .limit(limit)
@@ -103,6 +109,30 @@ export const list = async ({ query: { name = "", code = "", roles = "", status, 
         .lean()
     const total = await Employee.countDocuments(conditions)
     return getPaginData(result, total, page)
+}
+export const listNoPage = async ({ query: { name = "", code = "", roles = "", status, limit = 10, page = 1, warehouse }, user: currentUser }) => {
+    //tìm kiếm theo tên và mã
+    let conditions = {}
+    // const q = { name, code, roles }
+    // if (q) conditions = searchNameCode(q)
+
+    // if (status) conditions.status = status
+    if (currentUser.warehouse) conditions.warehouse = currentUser.warehouse
+    if (warehouse) conditions.warehouse = warehouse
+    conditions.company = currentUser.company
+
+    // const { offset } = getPagination(page, limit)
+    const result = await Employee.find(conditions)
+        .select("-createdAt -updatedAt -name_search ")
+        .populate("warehouse", "name")
+        .populate("company", "name")
+        // .limit(limit)
+        // .skip(offset)
+        .sort({ createdAt: -1 })
+        .lean()
+    // const total = await Employee.countDocuments(conditions)
+    // return getPaginData(result, total, page)
+    return result
 }
 
 export const verifyToken = (rolesCheck = []) => {
@@ -133,13 +163,13 @@ export const verifyToken = (rolesCheck = []) => {
             const isAdmin = roles.includes("admin")
             if (isAdmin) return next()
             if (!company) return next(new Error("Bạn không phải người của công ty!")) //check xem thông tin ng login có _id company không
-            if (!roles.includes("manager") && !warehouse) return next(new Error("Bạn không phải quản lý của công ty!"))
+            if (!roles.includes("manager") && !warehouse && !roles.includes("supplier")) return next(new Error("Bạn không phải quản lý của công ty!"))
             //check xem người đăng nhập có quyền chỉnh sửa không?
             if (rolesCheck.length > 0) {
                 let check = false
                 for (let role of rolesCheck) {
                     if (roles.includes(role)) check = true
-                    break
+                    // break
                 }
                 if (!check) return next(new Error("Bạn không có quyền chỉnh sửa!"))
             }
@@ -197,15 +227,15 @@ export const login = async ({ body, user }) => {
 // }
 
 export const forgotPassword = async ({ body }) => {
-    let oldUsername = await Employee.findOne({ username: body.username })
-    if (!oldUsername) {
-        oldUsername = await Supplier.findOne({ username: body.username })
+    let oldEmail = await Employee.findOne({ email: body.email })
+    if (!oldEmail) {
+        oldEmail = await Supplier.findOne({ email: body.email })
     }
-    if (!oldUsername) throw new ParamError("Tài khoản này không tồn tại!")
+    if (!oldEmail) throw new ParamError("Email này không tồn tại!")
     let newPassword = crypto.randomBytes(4).toString('hex');
-    await mailPassword(oldUsername.email, oldUsername.username, newPassword)
+    await mailPassword(oldEmail.email, oldEmail.username, newPassword)
     newPassword = bcrypt.hashSync(newPassword, 12)
-    await oldUsername.updateOne({ password: newPassword })
+    await oldEmail.updateOne({ password: newPassword })
     return true
 }
 

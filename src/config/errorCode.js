@@ -6,5 +6,5 @@ export const ErrorCodes = {
     EXIST_DATA: 400,
     AUTHENTICATION_ERROR: 401,
     PERMISSION_ERROR: 403,
-    UPLOAD_ERROR: 400
+    UPLOAD_ERROR: 400   
 }

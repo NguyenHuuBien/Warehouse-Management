@@ -17,12 +17,14 @@ export const createValidation = Joi.object({
     status: Joi.number().valid(0, 1),
     email: Joi.string(),
     phone: _phoneValidation,
+    // phone: Joi.string(),
     identify_number: Joi.string().length(12),
     sex: Joi.string().valid('male', 'female'),
     roles: Joi.string(),
     address: Joi.string(),
     company: Joi.string(),
-    warehouse: Joi.string()
+    warehouse: Joi.string(),
+    position: Joi.string()
 })
 
 export const loginValidation = Joi.object({
@@ -35,10 +37,13 @@ export const updateValidations = Joi.object({
     password: Joi.string().max(8),
     name: Joi.string(),
     status: Joi.number().valid(0, 1),
+    // phone: Joi.string(),
     phone: _phoneValidation,
     identify_number: Joi.string().length(12),
     sex: Joi.string().valid('male', 'female'),
     roles: Joi.string(),
     address: Joi.string(),
-    company: Joi.string()
+    company: Joi.string(),
+    email: Joi.string(),
+    position: Joi.string()
 })

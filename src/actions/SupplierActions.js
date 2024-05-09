@@ -101,4 +101,25 @@ export const list = async ({ query: { code = "", name = "", status, limit = 10, 
     const total = await Supplier.countDocuments(conditions)
     return getPaginData(result, total, page)
 }
+export const listNoPage = async ({ query: { code = "", name = "", status, company }, user: currentUser }) => {
+    //tìm kiếm theo tên và mã
+    let conditions = {}
+    const q = { code, name }
+    if (q) conditions = searchNameCode(q)
+
+    conditions.status = 1
+    if (status) conditions.status = status
+    conditions.company = company ? company : currentUser.company
+    if (!conditions.company) throw new ParamError("Thiếu tên công ty!")
+
+    // const { offset } = getPagination(page, limit)
+    const result = await Supplier.find(conditions)
+        .select("-createdAt -updatedAt -name_search")
+        .populate("company", "name")
+        .sort({ createdAt: -1 })
+    // .skip(offset)
+    // const total = await Supplier.countDocuments(conditions)
+    // return getPaginData(result, total, page)
+    return result
+}
 

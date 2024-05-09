@@ -11,6 +11,7 @@ import { getPaginData, getPagination } from "../utils/paging.js"
 import { createExport, updateExport } from "../validations/WarehouseExportValidations.js"
 import WareHouseExport from "../models/WarehouseExport.js"
 import { _createImport } from "./WarehouseImportActions.js"
+import { decreaseProduct } from "./OrderActions.js"
 
 const _validateProducts = async (products, warehouse) => {
     let totalPrice = 0
@@ -23,8 +24,8 @@ const _validateProducts = async (products, warehouse) => {
         product = await productValidate.validateAsync(product)
 
 
-        if (product.number > oldProduct.number) throw new ParamError("Số lượng mua hiện tại đã vượt quá số lượng trong kho!")
-        oldProduct.number = oldProduct.number - product.number
+        // if (product.number > oldProduct.number) throw new ParamError("Số lượng mua hiện tại đã vượt quá số lượng trong kho!")
+        // oldProduct.number = oldProduct.number - product.number
 
         await Product.findByIdAndUpdate(product.product, oldProduct)
         totalPrice = totalPrice + oldProduct.price * product.number
@@ -37,8 +38,11 @@ export const create = async ({ body, user, file }) => {
     if (!validate.warehouse) throw new ParamError("Thiếu tên kho!")
 
     if (!body.products) throw new ParamError("Không có sản phẩm nào!")
-    const newProduct = await _validateProducts(body.products, validate.warehouse)
-    validate.products = newProduct.products
+    let newProduct
+    if (validate.products) {
+        newProduct = await _validateProducts(body.products, validate.warehouse)
+        validate.products = newProduct.products
+    }
 
     const oldExport = await WareHouseExport.countDocuments()
     validate.code = convertCode("DH", oldExport)
@@ -62,14 +66,20 @@ export const update = async ({ body, user, params }) => {
 
     const oldExport = await WareHouseExport.findById(id)
     if (!oldExport) throw new NotFoundError("Không tìm thấy đơn hàng!")
+    let newProduct
+    if (validate.products) {
+        newProduct = await _validateProducts(body.products, oldExport.warehouse)
 
-    const newProduct = await _validateProducts(body.products, oldExport.warehouse)
-    validate.products = newProduct.products
-    validate.total_price = newProduct.totalPrice
-
-    if (validate.export_status === 4) {
-        _createImport(oldExport._id, oldExport.warehouse, oldExport.products)
     }
+
+    if (newProduct) {
+        validate.products = newProduct.products
+        validate.total_price = newProduct.totalPrice
+
+    }
+
+    if (oldExport.export_status == 0 || oldExport.is_retunr == 1) throw new ParamError("Đơn hàng này đã bị hủy hoặc đã trả lại")
+    if (validate.export_status == 2) await decreaseProduct(oldExport.products, oldExport.warehouse)
 
     const result = await WareHouseExport.findByIdAndUpdate(id, validate)
     return true
@@ -80,30 +90,74 @@ export const get = async ({ params }) => {
     if (!id) throw new NotFoundError("Thiếu id!")
     if (!isObjectId(id)) throw new ParamError("Sai id!")
     const oldExport = await WareHouseExport.findById(id)
-        .select("-createdAt -updatedAt -warehouse -company")
+        .select("-updatedAt -warehouse -company")
         .populate("create_by", "name")
+        .populate("products.product", "name")
     return oldExport
 }
 
-export const list = async ({ query: { code = "", status, limit = 10, page = 1, warehouse }, user: currentUser }) => {
+export const list = async ({
+    query: { export_status, code = "", startDate, is_return, endDate, date, create_by, product, limit = 10, page = 1, warehouse },
+    user: currentUser }) => {
     //tìm kiếm theo tên và mã
     let conditions = {}
     const q = { code }
     if (q) conditions = searchNameCode(q)
 
-    if (status) conditions.import_status = status
+    if (date) {
+        const startOfDay = new Date(date);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(date);
+        endOfDay.setHours(23, 59, 59, 999);
+        conditions.createdAt = { $gte: startOfDay, $lte: endOfDay };
+    } if (create_by) conditions.create_by = new mongoose.Types.ObjectId(create_by)
+    if (product) conditions["products.product"] = new mongoose.Types.ObjectId(product)
+    if (export_status) conditions.export_status = export_status
+
     if (currentUser.warehouse) conditions.warehouse = currentUser.warehouse
     if (warehouse) conditions.warehouse = warehouse
-    if (!conditions.warehouse) throw new ParamError("Thiếu tên kho!")
     conditions.company = currentUser.company
+    if (is_return) conditions.is_return = is_return
 
     const { offset } = getPagination(page, limit)
     const result = await WareHouseExport.find(conditions)
-        .select("-createdAt -updatedAt -warehouse -company")
+        .select("-updatedAt -warehouse -company")
         .populate("create_by", "name")
+        .populate("products.product", "name")
         .sort({ createdAt: -1 })
         .skip(offset)
         .limit(limit)
     const total = await WareHouseExport.countDocuments(conditions)
     return getPaginData(result, total, page)
+}
+
+export const listNoPage = async ({
+    query: { export_status, code = "", is_return, startDate, endDate, create_by, product, limit = 10, page = 1, warehouse },
+    user: currentUser }) => {
+    //tìm kiếm theo tên và mã
+    let conditions = {}
+    // const q = { code }
+    // if (q) conditions = searchNameCode(q)
+    if (is_return) conditions.is_return = is_return
+
+    // if (startDate && endDate) conditions.createdAt = { $gte: new Date(startDate), $lt: new Date(endDate) }
+    // if (create_by) conditions.create_by = new mongoose.Types.ObjectId(create_by)
+    // if (product) conditions["products.product"] = new mongoose.Types.ObjectId(product)
+    // if (export_status) conditions.export_status = export_status
+
+    if (currentUser.warehouse) conditions.warehouse = currentUser.warehouse
+    if (warehouse) conditions.warehouse = warehouse
+    conditions.company = currentUser.company
+
+    // const { offset } = getPagination(page, limit)
+    const result = await WareHouseExport.find(conditions)
+        .select("-updatedAt -warehouse -company")
+        .populate("create_by", "name")
+        .populate("products.product", "name")
+        .sort({ createdAt: -1 })
+    // .skip(offset)
+    // .limit(limit)
+    // const total = await WareHouseExport.countDocuments(conditions)
+    // return getPaginData(result, total, page)
+    return result
 }

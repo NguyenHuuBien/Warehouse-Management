@@ -1,6 +1,7 @@
 import { NotFoundError, ParamError } from "../config/errors.js"
 import Category from "../models/Category.js"
 import Company from "../models/Company.js"
+import Product from "../models/Product.js"
 import { convertNameSearch } from "../utils/convert.js"
 import { getPaginData, getPagination } from "../utils/paging.js"
 import { searchNameCode } from "../utils/search.js"
@@ -30,13 +31,25 @@ export const update = async ({ body, user, params, file }) => {
     if (!oldCatgory) throw new NotFoundError("Tên Loại sản phẩm này không tồn tại!")
 
     if (validate.name && validate.name != oldCatgory.name) {
-        const oldName = await Category.findOne({ name: validate.name })
+        validate.name_search = convertNameSearch(validate.name)
+        const oldName = await Category.findOne({ name_search: validate.name_search })
         if (oldName) throw new Error("Tên Loại sản phẩm này đã tồn tại!")
     }
 
     const result = await Category.findByIdAndUpdate(id, validate)
     return true
 
+}
+
+export const get = async ({ params }) => {
+    const { id } = params
+    if (!id) throw new NotFoundError("Thiếu id!")
+    if (!isObjectId(id)) throw new ParamError("Sai id!")
+    const oldCategory = await Category.findById(id).lean()
+        .select("-createdAt -updatedAt -name_search")
+        .populate("company", "name")
+        .lean()
+    return oldCategory
 }
 
 export const list = async ({ query: { name = "", code = "", status, limit = 10, page = 1 }, user: currentUser }) => {
@@ -49,13 +62,20 @@ export const list = async ({ query: { name = "", code = "", status, limit = 10, 
     conditions.company = currentUser.company
 
     // const { offset } = getPagination(page, limit)
-    const result = await Category.find(conditions)
+    let result = await Category.find(conditions)
         .populate("company", "name")
         .select("-createdAt -updatedAt -name_search -status")
         // .skip(offset)
         .sort({ createdAt: -1 })
         .lean()
     // const total = await Category.countDocuments(conditions)
+    result = await Promise.all(result.map(async category => {
+        const total = await Product.countDocuments({ category: category._id })
+        return {
+            ...category,
+            total: total
+        }
+    }))
     return result
     // return getPaginData(result, total, page)
 }
